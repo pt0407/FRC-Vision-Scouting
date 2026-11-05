@@ -11,7 +11,8 @@ from . import calibrate, detect, frames as frames_mod, ocr, report, track
 
 def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
         do_ocr: bool = True, verbose: bool = True,
-        max_seconds: float | None = None):
+        max_seconds: float | None = None,
+        event_detail: dict | None = None):
     out = work / "out"
     (out / "paths").mkdir(parents=True, exist_ok=True)
     (out / "archetypes").mkdir(parents=True, exist_ok=True)
@@ -94,21 +95,25 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
             fc = cv2.perspectiveTransform(corners, H).reshape(-1, 2)
             d = float(np.linalg.norm(fc[1] - fc[0]))
             sizes[tr.tid].append(min(d, 3.0))
-        # OCR on confirmed tracks, throttled
-        if do_ocr and i % 10 == 0:
-            for tr in active:
-                if tr.confirmed and tr.team is None:
-                    dets = rb if tr.alliance == "red" else bb
-                    best = min(dets, key=lambda b: np.linalg.norm(
-                        np.array(b["centroid"]) - tr.pos), default=None)
-                    if best is None:
-                        continue
-                    for v in ocr.read_team_number(img, best["bbox"],
-                                                  best["centroid"]):
-                        team_votes[tr.tid][v] += 1
-                        if sum(team_votes[tr.tid].values()) >= 3:
-                            tr.team = max(team_votes[tr.tid].items(),
-                                          key=lambda kv: kv[1])[0]
+        # OCR on confirmed, moving tracks — throttled: every 2 s of
+        # video, at most 8 tracks per round, stop once team is known
+        if do_ocr and i % 20 == 0:
+            candidates = [tr for tr in active
+                          if tr.confirmed and tr.team is None]
+            candidates.sort(key=lambda tr: -tr.hits)
+            for tr in candidates[:8]:
+                dets = rb if tr.alliance == "red" else bb
+                best = min(dets, key=lambda b: np.linalg.norm(
+                    np.array(b["centroid"]) - tr.pos), default=None)
+                if best is None:
+                    continue
+                for v in ocr.read_team_number(img, best["bbox"],
+                                              best["centroid"]):
+                    team_votes[tr.tid][v] += 1
+                    if sum(team_votes[tr.tid].values()) >= 3:
+                        tr.team = max(team_votes[tr.tid].items(),
+                                      key=lambda kv: kv[1])[0]
+                        break
         if verbose and i % 100 == 0:
             print(f"  frame {i}/{len(frame_paths)} tracks={len(active)}")
 
@@ -195,6 +200,8 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
             and tracks_field[tid]["team"] is None
         ],
     }
+    if event_detail:
+        scouting["event"] = event_detail
     (out / "scouting.json").write_text(json.dumps(scouting, indent=2))
     if verbose:
         print(f"[scout] {len(summary)} robot-tracks -> {out}")

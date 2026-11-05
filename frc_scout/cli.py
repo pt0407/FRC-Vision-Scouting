@@ -17,6 +17,11 @@ def main():
     r.add_argument("--fps", type=float, default=10.0)
     r.add_argument("--no-ocr", action="store_true")
     r.add_argument("--max-seconds", type=float, default=None)
+    r.add_argument("--event", default=None,
+                   help="FIRST event key (e.g. HOPPER) to merge official "
+                        "match data")
+    r.add_argument("--match", type=int, default=None,
+                   help="qualification match number")
 
     c = sub.add_parser("calibrate",
                        help="click 4 field corners on a frame")
@@ -33,6 +38,14 @@ def main():
                    help="scouting.json from a `run`")
     f.add_argument("--top", type=int, default=6,
                    help="keep top-N tracks by drive time")
+
+    ev = sub.add_parser("event",
+                        help="scrape FIRST event match data")
+    ev.add_argument("event", help="event key, e.g. HOPPER")
+    ev.add_argument("--season", type=int, default=2026)
+    ev.add_argument("--matches", type=int, default=None,
+                    help="limit to first N quals (default: all)")
+    ev.add_argument("--out", default=None)
 
     ac = sub.add_parser("autocal",
                         help="auto-search field calibration")
@@ -53,8 +66,13 @@ def main():
         if not video.exists():
             print(f"[scout] downloading {a.video}")
             video = download.download(a.video, work / "videos")
+        event_detail = None
+        if a.event and a.match:
+            from . import eventdata
+            event_detail = eventdata.match_detail(2026, a.event, a.match)
         pipeline.run(video, work, Path(a.calibration), fps=a.fps,
-                     do_ocr=not a.no_ocr, max_seconds=a.max_seconds)
+                     do_ocr=not a.no_ocr, max_seconds=a.max_seconds,
+                     event_detail=event_detail)
     elif a.cmd == "calibrate":
         import cv2
         from . import calibrate
@@ -98,6 +116,16 @@ def main():
         print(f"fed {len(picked)} archetypes -> {dest}")
         for p in picked:
             print(" ", p)
+    elif a.cmd == "event":
+        import json
+        from . import eventdata
+        out = Path(a.out) if a.out else \
+            Path("data/event") / f"{a.season}_{a.event}.json"
+        data = eventdata.event_scouting(a.season, a.event, a.matches)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(data, indent=2))
+        print(f"wrote {out}: {len(data['quals'])} matches, "
+              f"{len(data['teams'])} teams")
     elif a.cmd == "autocal":
         from . import autocal
         autocal.run(Path(a.video), work, Path(a.out),

@@ -12,6 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from scipy.optimize import differential_evolution
+from scipy.spatial import cKDTree
 
 from . import calibrate, detect
 
@@ -19,7 +20,7 @@ FIELD_W = calibrate.FIELD_HALF_X * 2   # 16.541 m
 FIELD_H = calibrate.FIELD_HALF_Z * 2   #  8.069 m
 
 
-def precompute_detections(frame_paths: list[Path], step: int = 5):
+def precompute_detections(frame_paths: list[Path], step: int = 10):
     """Per sampled frame: (t_idx, [(x, y, alliance), ...]) in pixels."""
     frames = []
     for i in range(0, len(frame_paths), step):
@@ -56,44 +57,60 @@ def _score(params, frames, fh, fw):
     total_in = 0
     total = 0
     good_speeds = 0
+    tight_speeds = 0
     matched = 0
-    prev = None
-    dt = 0.5  # seconds between sampled frames (step=5 @10fps)
+    prev_pts = prev_al = None
+    dt = 1.0  # seconds between sampled frames (step=10 @10fps)
+    all_f = []
     for dets in frames:
-        pts = np.array([[d[0], d[1], 1.0] for d in dets],
-                       dtype=np.float32)
+        arr = np.array([[d[0], d[1]] for d in dets], dtype=np.float32)
+        al = np.array([d[2] for d in dets])
+        pts = np.concatenate([arr, np.ones((len(arr), 1),
+                                          dtype=np.float32)], axis=1)
         f = (H @ pts.T).T
         f = f[:, :2] / np.maximum(f[:, 2:3], 1e-6)
         inside = (np.abs(f[:, 0]) <= calibrate.FIELD_HALF_X + 0.5) & \
                  (np.abs(f[:, 1]) <= calibrate.FIELD_HALF_Z + 0.5)
-        total_in += inside.sum()
+        total_in += int(inside.sum())
         total += len(dets)
-        # greedy nearest-neighbour matching across frames for speed
-        if prev is not None:
-            pf, pa = prev
-            for i, d in enumerate(dets):
-                if not inside[i]:
+        all_f.append(f[inside])
+        if prev_pts is not None:
+            # KD-tree match per alliance
+            for a in ("r", "b"):
+                cur = np.where((al == a) & inside)[0]
+                prv = np.where(prev_al == a)[0]
+                if len(cur) == 0 or len(prv) == 0:
                     continue
-                best, bd = None, 1e9
-                for j, q in enumerate(pf):
-                    if pa[j] != d[2]:
-                        continue
-                    dd = (f[i, 0] - q[0]) ** 2 + (f[i, 1] - q[1]) ** 2
-                    if dd < bd:
-                        bd, best = dd, j
-                if best is not None and bd < 4.0:   # <2 m jump
-                    sp = np.sqrt(bd) / dt
+                tree = cKDTree(prev_pts[prv])
+                dd, jj = tree.query(f[cur], k=1)
+                ok = dd < 2.0      # <2 m jump
+                for c_i, p_i, d_ in zip(cur[ok], prv[jj[ok]], dd[ok]):
                     matched += 1
+                    sp = d_ / dt
                     if 0.2 <= sp <= 8.0:
                         good_speeds += 1
-        prev = (f, [d[2] for d in dets])
+                    if 0.8 <= sp <= 6.5:
+                        tight_speeds += 1
+        prev_pts, prev_al = f, al
 
-    if total == 0 or matched < 10:
-        return -1e9
+    quad_area = abs(cv2.contourArea(corners.astype(np.float32)))
+    frame_area = fh * fw
+    if quad_area < 0.12 * frame_area or total_in < 150 or matched < 30:
+        return -1e9 + quad_area / frame_area  # tiny quads score worst
     inside_frac = total_in / total
     speed_frac = good_speeds / matched
-    # reward quads that keep most blobs in-field with sane speeds
-    return inside_frac * 2.0 + speed_frac - 0.5 * abs(inside_frac - 0.8)
+    tight_frac = tight_speeds / matched
+    # coverage: do detections spread across the field, or clump?
+    pts_all = np.concatenate([p for p in all_f if len(p)]) \
+        if any(len(p) for p in all_f) else np.zeros((0, 2))
+    if len(pts_all) > 10:
+        span = (pts_all.max(0) - pts_all.min(0))
+        coverage = min(1.0, (span[0] / (2 * calibrate.FIELD_HALF_X)) *
+                       (span[1] / (2 * calibrate.FIELD_HALF_Z)) * 4.0)
+    else:
+        coverage = 0.0
+    return (1.5 * tight_frac + 1.0 * coverage +
+            0.5 * speed_frac + 0.3 * inside_frac)
 
 
 def search(frame_paths: list[Path], maxiter: int = 60,
@@ -117,8 +134,8 @@ def search(frame_paths: list[Path], maxiter: int = 60,
         return -_score(p, frames, h, w)
 
     res = differential_evolution(
-        obj, bounds, maxiter=maxiter, popsize=12, seed=seed,
-        tol=1e-4, polish=True, workers=1)
+        obj, bounds, maxiter=maxiter, popsize=10, seed=seed,
+        tol=1e-4, polish=False, workers=1)
     return res.x.reshape(4, 2), -res.fun
 
 

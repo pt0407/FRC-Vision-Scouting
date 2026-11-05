@@ -34,6 +34,8 @@ out/scouting.json  out/paths/*.json  out/archetypes/*.toml  out/strategies/*.tom
 uv sync
 # one-time per broadcast angle: calibrate field corners
 uv run frc-scout calibrate <video.mp4> --out calibrations/<name>.json --t 60
+# or try the automatic search (slower, ~30 min):
+uv run frc-scout autocal <video.mp4> --out calibrations/<name>.json
 ```
 
 The calibrate tool opens the frame; click the four field corners in
@@ -50,6 +52,24 @@ uv run frc-scout run "https://www.youtube.com/watch?v=..." \
 uv run frc-scout run data/q1.mp4 --calibration calibrations/x.json \
     --fps 10 --max-seconds 150
 ```
+
+## Official event data (recommended complement)
+
+FIRST publishes full match score breakdowns at
+`frc-events.firstinspires.org` — scrapable HTML, no API key:
+
+```bash
+uv run frc-scout event HOPPER --season 2026            # all 124 quals
+uv run frc-scout event HOPPER --matches 10             # subset
+# merge one match's official stats into a scouting run:
+uv run frc-scout run <video> --calibration calibrations/x.json \
+    --event HOPPER --match 1
+```
+
+Per match you get per-team auto-climb and endgame-tower results plus
+alliance fuel counts per shift, fouls and final score — ground truth
+that video inference can't match. `scouting.json` then contains both
+the official `event` block and the video-derived track stats.
 
 ## Feed frc-multi-sim
 
@@ -68,12 +88,17 @@ auto behavior) for future strategy-agent conditioning.
 ## Status / known limitations
 
 - v1: single fixed camera assumption; hard cuts to close-ups/replays
-  will produce garbage tracks during those segments (tracks are
-  filtered by motion, but expect noise).
-- Team-number OCR is best-effort; tracks that never OCR a confident
-  number are reported as `track-N` and listed under
-  `unidentified_tracks` in `scouting.json`.
+  are filtered by histogram matching against the calibration frame,
+  but expect noise around segment boundaries.
+- Team-number OCR on bumper plates is **not viable** at broadcast
+  resolution — tesseract finds nothing. Instead the scorebug overlay
+  is parsed for the 6 roster team numbers (`scorebug.py`), and
+  `eventdata.py` pulls official per-match stats. Track→team-number
+  assignment inside the video is still open; tracks are reported as
+  `<alliance>-track-N` and merged when OCR does succeed.
 - `mass`/`max_force` in emitted archetypes are heuristic estimates
   from observed speed/acceleration — treat as priors, not measurements.
-- Auto-calibration (`auto_detect_quad`) is a fallback; the click
-  calibration is the reliable path.
+- Auto-calibration (`autocal`) works but is slow (~5 min) and can land
+  on degenerate quads; verify `calibrations/*.json` corners look right
+  (field should fill most of the frame bottom). The click calibration
+  remains the reliable path.
