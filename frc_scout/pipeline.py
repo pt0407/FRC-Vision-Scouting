@@ -6,7 +6,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import calibrate, detect, frames as frames_mod, ocr, registry, report, track
+from . import calibrate, classify, detect, frames as frames_mod, ocr, \
+    registry, report, track
 
 
 def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
@@ -188,6 +189,7 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
         st["track_id"] = tid
         st["team_votes"] = tk.get("team_votes", {})
         st["px_path"] = tk["px_path"]
+        st["features"] = classify.classify_track(tk, st, fps)
         # merge fragments that resolved to the same team: keep the
         # longest-lived fragment's stats
         prev = summary.get(key)
@@ -232,6 +234,16 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
     }
     if event_detail:
         scouting["event"] = event_detail
+        # suggest track->team bindings from official per-team results
+        suggested = classify.autobind(work_tracks, summary, event_detail)
+        scouting["suggested_labels"] = suggested
+        if suggested:
+            (out / "labels_suggested.json").write_text(json.dumps(
+                {"labels": {k: v["team"] for k, v in suggested.items()},
+                 "detail": suggested}, indent=2))
+            if verbose:
+                print(f"[scout] suggested {len(suggested)} label(s) "
+                      f"-> labels_suggested.json")
     scouting["clock_samples"] = clock_samples
     (out / "scouting.json").write_text(json.dumps(scouting, indent=2))
     if verbose:

@@ -55,6 +55,9 @@ def main():
     bt.add_argument("--max-seconds", type=float, default=None)
     bt.add_argument("--aggregate-only", action="store_true",
                     help="skip video, just rebuild team profiles")
+    bt.add_argument("--reclassify", action="store_true",
+                    help="backfill behavior features into processed "
+                         "matches, then exit")
 
     ev = sub.add_parser("event",
                         help="scrape FIRST event match data")
@@ -94,6 +97,11 @@ def main():
                              "an event")
     cd.add_argument("event", help="event key, e.g. HOPPER")
     cd.add_argument("--season", type=int, default=2026)
+
+    sh = sub.add_parser("sheet",
+                        help="export 5572-style per-team scouting CSV")
+    sh.add_argument("event", help="event key, e.g. HOPPER")
+    sh.add_argument("--season", type=int, default=2026)
 
     a = p.parse_args()
     work = Path(a.work) if hasattr(a, "work") else Path("data/work")
@@ -191,6 +199,10 @@ def main():
         if not ev_json.exists():
             data = eventdata.event_scouting(season, event)
             ev_json.write_text(_json.dumps(data))
+        if a.reclassify:
+            n = batch.reclassify_all(work)
+            print(f"reclassified {n} matches")
+            return
         if not a.aggregate_only:
             quals = _json.loads(ev_json.read_text())["quals"]
             for q in quals[a.skip:][:a.limit]:
@@ -251,6 +263,12 @@ def main():
             teams, a.event, Path("data/registry/review.html"),
             existing=registry.load(Path("data/registry/teams.json")))
         print(f"wrote {out} ({len(teams)} teams)")
+    elif a.cmd == "sheet":
+        from . import sheet
+        batch_dir = Path("data/batch") / f"{a.season}_{a.event}"
+        out = batch_dir / "sheet.csv"
+        rows = sheet.build_sheet(batch_dir, out)
+        print(f"wrote {out} ({len(rows)} teams)")
     elif a.cmd == "playlist":
         import subprocess
         subprocess.run(["yt-dlp", "--flat-playlist", "--print",

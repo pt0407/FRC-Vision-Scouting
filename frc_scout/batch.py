@@ -16,7 +16,39 @@ from pathlib import Path
 
 import requests
 
-from . import calibrate, download, eventdata, pipeline
+from . import calibrate, classify, download, eventdata, pipeline
+
+
+def reclassify_all(work: Path):
+    """Backfill `features` + `suggested_labels` into existing
+    scouting.json files (computed from paths/*.json, no re-tracking)."""
+    done = 0
+    for sj in sorted(work.glob("matches/*/out/scouting.json")):
+        d = json.loads(sj.read_text())
+        if "suggested_labels" in d:
+            continue
+        fps = d.get("fps", 6.0)
+        tracks, summary = {}, {}
+        for pf in (sj.parent / "paths").glob("*.json"):
+            p = json.loads(pf.read_text())
+            key = pf.stem
+            st = d["teams"].get(key, {})
+            tr = {"xy": [[s[1], s[2]] for s in p["samples"]],
+                  "t": [s[0] for s in p["samples"]],
+                  "alliance": p["alliance"], "team": p["team"]}
+            ft = classify.classify_track(tr, st, fps)
+            st["features"] = ft
+            tracks[key] = tr
+            summary[key] = st
+        sug = classify.autobind(tracks, summary, d.get("event"))
+        d["suggested_labels"] = sug
+        if sug:
+            (sj.parent / "labels_suggested.json").write_text(json.dumps(
+                {"labels": {k: v["team"] for k, v in sug.items()},
+                 "detail": sug}, indent=2))
+        sj.write_text(json.dumps(d, indent=2))
+        done += 1
+    return done
 
 UA = {"User-Agent": "Mozilla/5.0 (frc-scout)"}
 
@@ -100,6 +132,7 @@ def aggregate(event_dir: Path, season, event):
                 "zone_time": st["zone_time_s"],
                 "zone_visits": st.get("zone_visits", {}),
                 "auto_path_m": st["auto"]["path_length_m"],
+                "features": st.get("features", {}),
             }
 
     # 3. roll up per team
