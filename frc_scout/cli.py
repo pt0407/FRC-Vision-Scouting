@@ -78,6 +78,23 @@ def main():
                         help="list videos in a YouTube playlist")
     pl.add_argument("url")
 
+    rg = sub.add_parser("registry",
+                        help="mechanism registry (CAD-tagged)")
+    rg.add_argument("action", choices=["set", "list", "import"])
+    rg.add_argument("value", nargs="?",
+                    help="team number (set) or export JSON file (import)")
+    rg.add_argument("--mech", action="append", default=[],
+                    help="type:param=val,... (repeatable)")
+    rg.add_argument("--cad-url", default=None)
+    rg.add_argument("--robot-name", default=None)
+    rg.add_argument("--notes", default=None)
+
+    cd = sub.add_parser("cads",
+                        help="generate CAD/mechanism review page for "
+                             "an event")
+    cd.add_argument("event", help="event key, e.g. HOPPER")
+    cd.add_argument("--season", type=int, default=2026)
+
     a = p.parse_args()
     work = Path(a.work) if hasattr(a, "work") else Path("data/work")
 
@@ -205,6 +222,35 @@ def main():
         from . import autocal
         autocal.run(Path(a.video), work, Path(a.out),
                     max_seconds=a.max_seconds)
+    elif a.cmd == "registry":
+        import json as _json
+        from . import registry
+        reg_path = Path("data/registry/teams.json")
+        if a.action == "set":
+            e = registry.set_mechanisms(
+                reg_path, a.value, a.mech,
+                cad_url=a.cad_url, robot_name=a.robot_name,
+                notes=a.notes)
+            print(_json.dumps({a.value: e}, indent=2))
+        elif a.action == "import":
+            exported = _json.loads(Path(a.value).read_text())
+            reg = registry.merge_export(reg_path, exported)
+            print(f"merged {len(exported)} teams -> {reg_path}")
+        else:
+            print(_json.dumps(registry.load(reg_path), indent=2))
+    elif a.cmd == "cads":
+        import json as _json
+        from . import cads, registry
+        ev_json = Path("data/event") / f"{a.season}_{a.event}.json"
+        if not ev_json.exists():
+            ev_json = Path("data/batch") / \
+                f"{a.season}_{a.event}" / ev_json.name
+        teams = sorted(_json.loads(ev_json.read_text())["teams"],
+                       key=int)
+        out = cads.review_page(
+            teams, a.event, Path("data/registry/review.html"),
+            existing=registry.load(Path("data/registry/teams.json")))
+        print(f"wrote {out} ({len(teams)} teams)")
     elif a.cmd == "playlist":
         import subprocess
         subprocess.run(["yt-dlp", "--flat-playlist", "--print",

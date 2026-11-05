@@ -6,7 +6,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import calibrate, detect, frames as frames_mod, ocr, report, track
+from . import calibrate, detect, frames as frames_mod, ocr, registry, report, track
 
 
 def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
@@ -18,6 +18,7 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
     (out / "paths").mkdir(parents=True, exist_ok=True)
     (out / "archetypes").mkdir(parents=True, exist_ok=True)
     (out / "strategies").mkdir(parents=True, exist_ok=True)
+    reg = registry.load(Path("data/registry/teams.json"))
 
     # 1. frames
     fdir = work / "frames"
@@ -205,8 +206,13 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
             "samples": [[round(t, 2), round(x, 2), round(z, 2)]
                         for t, (x, z) in zip(tk["t"], tk["xy"])]}))
         arch = report.estimate_archetype(tk, st, speed, team)
-        (out / "archetypes" / f"{key}.toml").write_text(
-            report.archetype_toml(arch))
+        toml_text = report.archetype_toml(arch)
+        if team and reg:
+            tags = registry.mech_tags(team, reg)
+            if tags:
+                toml_text += f"\n# mechanisms: {', '.join(tags)}\n"
+                toml_text += registry.mech_toml_blocks(team, reg)
+        (out / "archetypes" / f"{key}.toml").write_text(toml_text)
         (out / "strategies" / f"{key}.toml").write_text(
             report.strategy_toml(team, st, tk["alliance"]))
 

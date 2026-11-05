@@ -142,3 +142,36 @@ auto behavior) for future strategy-agent conditioning.
   on degenerate quads; verify `calibrations/*.json` corners look right
   (field should fill most of the frame bottom). The click calibration
   remains the reliable path.
+
+## Mechanism registry (CAD-tagged)
+
+Video can't see mechanisms at broadcast resolution — so tag them
+yourself from team CADs/reveals, and the sim gets real `[[mech]]`
+geometry:
+
+```bash
+# review page: one card per team with CAD/reveal search links,
+# mechanism checkboxes, notes. Open, tag, Export JSON:
+uv run frc-scout cads HOPPER           # -> data/registry/review.html
+
+# or tag directly:
+uv run frc-scout registry set 8749 \
+    --mech "turret_shooter:mount=corner" \
+    --mech "climb_arm:level=2" \
+    --cad-url "https://cad.onshape.com/..." \
+    --notes "corner turret, ground intake"
+
+# merge the exported JSON from the review page:
+uv run frc-scout registry import mechanisms_export.json
+uv run frc-scout registry list
+```
+
+Registry lives in `data/registry/teams.json`. Mech types:
+`ground_intake`, `climb_arm`, `climb_elevator`, `turret_shooter`
+(sim geometry presets -> `[[mech]]` TOML in archetypes) plus tag-only
+types `station_intake`, `hopper`, `feeder`, `die_rotor`,
+`inline_shooter`, `over_bumper_intake`, `defense`.
+
+Once a labeled run hits a registry team, the emitted archetype TOML
+carries real mechanism joints matching frc-multi-sim's `[[mech]]`
+schema — not just a rigid box.
