@@ -25,6 +25,15 @@ def main():
     c.add_argument("--t", type=float, default=60.0,
                    help="seek seconds into video")
 
+    f = sub.add_parser("feed",
+                       help="copy scouted archetypes into frc-multi-sim")
+    f.add_argument("--sim", default="../frc-sim-m0",
+                   help="path to frc-multi-sim checkout")
+    f.add_argument("--scouting", required=True,
+                   help="scouting.json from a `run`")
+    f.add_argument("--top", type=int, default=6,
+                   help="keep top-N tracks by drive time")
+
     pl = sub.add_parser("playlist",
                         help="list videos in a YouTube playlist")
     pl.add_argument("url")
@@ -41,25 +50,48 @@ def main():
         pipeline.run(video, work, Path(a.calibration), fps=a.fps,
                      do_ocr=not a.no_ocr, max_seconds=a.max_seconds)
     elif a.cmd == "calibrate":
+        import cv2
         from . import calibrate
         video = Path(a.video)
-        cap = __import__("cv2").VideoCapture(str(video))
-        cap.set(__import__("cv2").CAP_PROP_POS_MSEC, a.t * 1000)
+        cap = cv2.VideoCapture(str(video))
+        cap.set(cv2.CAP_PROP_POS_MSEC, a.t * 1000)
         ok, frame = cap.read()
         cap.release()
         if not ok:
             sys.exit("could not read frame from video")
         quad = calibrate.auto_detect_quad(frame)
         if quad is None:
-            print("auto-detection failed. Either install opencv-python "
-                  "and re-run for the click UI, or edit the calibration "
-                  "JSON manually with 4 field-corner pixel coords "
-                  "(order: bottom-left, bottom-right, top-right, "
-                  "top-left).")
-            sys.exit(1)
+            print("auto-detection failed — opening click UI "
+                  "(click BL, BR, TR, TL; ESC to quit)")
+            try:
+                calibrate.make_viewer(Path(a.out), video, work)
+            except cv2.error as e:
+                sys.exit(f"no display for click UI ({e}); edit the "
+                         "calibration JSON manually with 4 field-corner "
+                         "pixel coords (order: bottom-left, "
+                         "bottom-right, top-right, top-left).")
+            return
         calibrate.save_calibration(quad, Path(a.out),
                                    frame.shape[1], frame.shape[0])
         print("wrote", a.out, quad)
+    elif a.cmd == "feed":
+        import json
+        import shutil
+        scouting = json.loads(Path(a.scouting).read_text())
+        teams = sorted(scouting["teams"].items(),
+                       key=lambda kv: -kv[1]["drive_time_s"])[:a.top]
+        dest = Path(a.sim) / "archetypes" / "scouted"
+        dest.mkdir(parents=True, exist_ok=True)
+        src_dir = Path(a.scouting).parent / "archetypes"
+        picked = []
+        for key, st in teams:
+            src = src_dir / f"{key}.toml"
+            if src.exists():
+                shutil.copy(src, dest / src.name)
+                picked.append(src.name)
+        print(f"fed {len(picked)} archetypes -> {dest}")
+        for p in picked:
+            print(" ", p)
     elif a.cmd == "playlist":
         import subprocess
         subprocess.run(["yt-dlp", "--flat-playlist", "--print",

@@ -41,5 +41,41 @@ def blobs_from_mask(mask, min_area=120, max_area=20000):
     return out
 
 
+def cluster_blobs(blobs, merge_dist=50.0):
+    """Merge blobs whose centroids are close — one robot often yields
+    several bumper/chassis fragments. Returns merged pseudo-blobs."""
+    blobs = sorted(blobs, key=lambda b: -b["area"])
+    used = [False] * len(blobs)
+    out = []
+    for i, b in enumerate(blobs):
+        if used[i]:
+            continue
+        group = [b]
+        used[i] = True
+        cx, cy = b["centroid"]
+        for j in range(i + 1, len(blobs)):
+            if used[j]:
+                continue
+            dx = blobs[j]["centroid"][0] - cx
+            dy = blobs[j]["centroid"][1] - cy
+            if dx * dx + dy * dy < merge_dist * merge_dist:
+                group.append(blobs[j])
+                used[j] = True
+        if len(group) == 1:
+            out.append(b)
+            continue
+        # weighted centroid + union bbox
+        tot = sum(g["area"] for g in group)
+        mx = sum(g["centroid"][0] * g["area"] for g in group) / tot
+        my = sum(g["centroid"][1] * g["area"] for g in group) / tot
+        x0 = min(g["bbox"][0] for g in group)
+        y0 = min(g["bbox"][1] for g in group)
+        x1 = max(g["bbox"][0] + g["bbox"][2] for g in group)
+        y1 = max(g["bbox"][1] + g["bbox"][3] for g in group)
+        out.append({"bbox": (x0, y0, x1 - x0, y1 - y0),
+                    "area": int(tot), "centroid": (mx, my)})
+    return out
+
+
 def inside_poly(points, poly):
     return [p for p in points if cv2.pointPolygonTest(poly, p, False) >= 0]

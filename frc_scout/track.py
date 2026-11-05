@@ -30,8 +30,8 @@ class Track:
 
 
 class Tracker:
-    MAX_DIST_PX = 90.0       # gating distance per frame @10fps
-    MAX_MISSED = 8
+    MAX_DIST_PX = 110.0      # gating distance per frame @10fps
+    MAX_MISSED = 12
 
     def __init__(self):
         self.tracks: dict[int, Track] = {}

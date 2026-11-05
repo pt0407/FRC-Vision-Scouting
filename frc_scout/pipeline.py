@@ -46,12 +46,14 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
         if img is None:
             continue
         red, blue, _ = detect.alliance_masks(img)
-        rb = [b for b in detect.blobs_from_mask(red)
-              if cv2.pointPolygonTest(field_poly,
-                                      b["centroid"], False) >= 0]
-        bb = [b for b in detect.blobs_from_mask(blue)
-              if cv2.pointPolygonTest(field_poly,
-                                      b["centroid"], False) >= 0]
+        rb = detect.cluster_blobs(
+            [b for b in detect.blobs_from_mask(red)
+             if cv2.pointPolygonTest(field_poly,
+                                     b["centroid"], False) >= 0])
+        bb = detect.cluster_blobs(
+            [b for b in detect.blobs_from_mask(blue)
+             if cv2.pointPolygonTest(field_poly,
+                                     b["centroid"], False) >= 0])
         active = tracker.update({"red": rb, "blue": bb}, times[i],
                                 field_poly=field_poly)
         by_tid = {}
