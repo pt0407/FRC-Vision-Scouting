@@ -24,6 +24,34 @@ def frame_times(n_frames: int, fps: float):
     return [i / fps for i in range(n_frames)]
 
 
+def main_camera_mask(frame_paths: list[Path], ref_idx: int,
+                     thresh: float = 0.25, step: int = 3):
+    """Boolean mask: frames that look like the same camera as the
+    calibration frame (rejects replay/close-up cutaways).
+
+    Compares 32-bin grayscale histograms of downsampled frames.
+    """
+    def hist(p):
+        img = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
+        img = cv2.resize(img, (160, 90))
+        h = cv2.calcHist([img], [0], None, [32], [0, 256])
+        h = cv2.normalize(h, h).flatten()
+        return h
+
+    ref = hist(frame_paths[ref_idx])
+    mask = np.zeros(len(frame_paths), dtype=bool)
+    for i in range(0, len(frame_paths), step):
+        d = cv2.compareHist(ref, hist(frame_paths[i]),
+                            cv2.HISTCMP_BHATTACHARYYA)
+        mask[i] = d < thresh
+    # fill gaps between sampled frames
+    idx = np.where(mask)[0]
+    for a, b in zip(idx[:-1], idx[1:]):
+        if b - a <= step + 1:
+            mask[a:b + 1] = True
+    return mask
+
+
 def scene_cuts(frame_paths: list[Path], thresh: float = 0.35,
                sample_every: int = 5):
     """Return list of (start_idx, end_idx) segments split on hard cuts."""

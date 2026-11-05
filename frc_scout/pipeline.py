@@ -28,6 +28,30 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
     # 2. calibration
     calib = calibrate.load_calibration(calib_path)
     H = calibrate.homography_from_corners(calib["field_corners_px"])
+    ref_idx = len(frame_paths) // 2
+    cam_mask = frames_mod.main_camera_mask(frame_paths, ref_idx)
+    # keep contiguous main-camera runs longer than 3 s
+    runs, start = [], None
+    for i, ok in enumerate(cam_mask):
+        if ok and start is None:
+            start = i
+        elif not ok and start is not None:
+            if i - start > 30:
+                runs.append((start, i))
+            start = None
+    if start is not None and len(cam_mask) - start > 30:
+        runs.append((start, len(cam_mask)))
+    keep = np.zeros(len(frame_paths), dtype=bool)
+    for a, b in runs:
+        keep[a:b] = True
+    if verbose:
+        print(f"[scout] main-camera frames: {int(keep.sum())}/"
+              f"{len(frame_paths)} in {len(runs)} segment(s)")
+    frame_paths = [p for p, k in zip(frame_paths, keep) if k]
+    times = [t for t, k in zip(times, keep) if k]
+    if not frame_paths:
+        raise RuntimeError("no main-camera frames found")
+    ref_idx = min(ref_idx, len(frame_paths) - 1)
     first = cv2.imread(str(frame_paths[len(frame_paths) // 2]))
     # field -> pixel quad for containment tests
     field_poly = np.float32(cv2.perspectiveTransform(
