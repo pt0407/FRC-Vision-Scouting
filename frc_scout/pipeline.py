@@ -62,6 +62,7 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
 
     # 3. detect + track
     tracker = track.Tracker()
+    clock_samples = []
     traj = defaultdict(list)          # tid -> [(t, px, py)]
     alliances = {}                    # tid -> alliance (first seen)
     sizes = defaultdict(list)         # tid -> apparent size m^2 proxy
@@ -115,6 +116,15 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
                         tr.team = max(team_votes[tr.tid].items(),
                                       key=lambda kv: kv[1])[0]
                         break
+        # scorebug clock sample every ~5 s of video
+        if i % 50 == 0:
+            try:
+                from . import scorebug
+                sb = scorebug.parse_scorebug(img)
+                if sb and sb.get("clock"):
+                    clock_samples.append([round(times[i], 1), sb["clock"]])
+            except Exception:
+                pass
         if verbose and i % 100 == 0:
             print(f"  frame {i}/{len(frame_paths)} tracks={len(active)}")
 
@@ -216,6 +226,7 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
     }
     if event_detail:
         scouting["event"] = event_detail
+    scouting["clock_samples"] = clock_samples
     (out / "scouting.json").write_text(json.dumps(scouting, indent=2))
     if verbose:
         print(f"[scout] {len(summary)} robot-tracks -> {out}")

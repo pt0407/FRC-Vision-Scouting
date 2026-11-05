@@ -62,13 +62,19 @@ def summarize(track, fps):
         "drive_time_s": float(t[-1] - t[0]),
         "samples": len(t),
     }
-    # zone occupancy
+    # zone occupancy + visit counts (entries into each zone)
     occ = defaultdict(float)
+    visits = defaultdict(int)
+    prev_zone = None
     for p in xy:
         zn = _zone_of(p[0], p[1])
         if zn:
             occ[zn] += 1 / fps
+            if zn != prev_zone:
+                visits[zn] += 1
+        prev_zone = zn
     stats["zone_time_s"] = {k: round(v, 1) for k, v in occ.items()}
+    stats["zone_visits"] = dict(visits)
     # auto vs teleop
     auto_mask = t < AUTO_S
     stats["auto"] = {
@@ -130,6 +136,7 @@ def strategy_toml(team, stats, alliance):
         f'max_speed_mps = {stats["max_speed_mps"]:.2f}\n'
         f'path_length_m = {stats["path_length_m"]:.1f}\n'
         f'zone_time_s = {zt}\n'
+        f'zone_visits = {stats.get("zone_visits", {})}\n'
         f'[auto]\npath_length_m = {stats["auto"]["path_length_m"]:.1f}\n'
         f'zone_time_s = {stats["auto"]["zone_time_s"]}\n'
     )

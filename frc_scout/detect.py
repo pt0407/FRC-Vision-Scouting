@@ -7,8 +7,13 @@ import cv2
 import numpy as np
 
 # HSV ranges tuned for broadcast footage (OpenCV hue 0-179).
+# Warm arena light shifts red bumpers toward orange (hue ~15-30);
+# that range overlaps yellow fuel, so orange-red blobs must be large
+# (robots, not balls) to count.
 RED_RANGES = [((0, 75, 55), (12, 255, 255)),
               ((168, 75, 55), (179, 255, 255))]
+ORANGE_RED_RANGE = ((12, 80, 60), (30, 255, 255))
+ORANGE_RED_MIN_AREA = 400
 BLUE_RANGE = ((95, 55, 55), (135, 255, 255))
 YELLOW_RANGE = ((18, 90, 120), (38, 255, 255))  # fuel balls
 
@@ -26,6 +31,15 @@ def alliance_masks(img_bgr):
     hsv = cv2.medianBlur(hsv, 3)
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     red = cv2.morphologyEx(_mask(hsv, RED_RANGES), cv2.MORPH_OPEN, k)
+    # orange-red: keep only robot-sized blobs (excludes fuel balls)
+    orange = cv2.morphologyEx(_mask(hsv, [ORANGE_RED_RANGE]),
+                              cv2.MORPH_OPEN, k)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(orange, 8)
+    keep = np.zeros_like(orange)
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] >= ORANGE_RED_MIN_AREA:
+            keep[lab == i] = 255
+    red = cv2.bitwise_or(red, keep)
     blue = cv2.morphologyEx(_mask(hsv, [BLUE_RANGE]), cv2.MORPH_OPEN, k)
     return red, blue, hsv
 
