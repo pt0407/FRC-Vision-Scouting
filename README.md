@@ -71,6 +71,22 @@ alliance fuel counts per shift, fouls and final score — ground truth
 that video inference can't match. `scouting.json` then contains both
 the official `event` block and the video-derived track stats.
 
+## Labeling tracks with team numbers
+
+Bumper OCR doesn't work at broadcast resolution, so assign team
+numbers manually — takes ~2 min per match:
+
+```bash
+uv run frc-scout label data/work/q1full2/out   # writes label.html
+# open label.html in a browser: click a trajectory, pick its team
+# from the roster, hit Export -> save as labels.json in the same dir
+uv run frc-scout run <video> --calibration ... --labels labels.json
+```
+
+`--labels` renames tracks to real team numbers before archetypes and
+strategy TOMLs are written, and merges fragments assigned to the same
+team.
+
 ## Feed frc-multi-sim
 
 Archetypes land in `out/archetypes/<alliance>-<team>.toml` in exactly

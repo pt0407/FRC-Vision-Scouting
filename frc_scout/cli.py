@@ -22,6 +22,8 @@ def main():
                         "match data")
     r.add_argument("--match", type=int, default=None,
                    help="qualification match number")
+    r.add_argument("--labels", default=None,
+                   help="labels.json from `frc-scout label`")
 
     c = sub.add_parser("calibrate",
                        help="click 4 field corners on a frame")
@@ -47,6 +49,10 @@ def main():
                     help="limit to first N quals (default: all)")
     ev.add_argument("--out", default=None)
 
+    lb = sub.add_parser("label",
+                        help="generate HTML track-labeling tool")
+    lb.add_argument("out_dir", help="scouting output dir")
+
     ac = sub.add_parser("autocal",
                         help="auto-search field calibration")
     ac.add_argument("video")
@@ -70,9 +76,14 @@ def main():
         if a.event and a.match:
             from . import eventdata
             event_detail = eventdata.match_detail(2026, a.event, a.match)
+        labels = None
+        if a.labels:
+            import json as _json
+            labels = _json.loads(Path(a.labels).read_text()).get(
+                "labels", {})
         pipeline.run(video, work, Path(a.calibration), fps=a.fps,
                      do_ocr=not a.no_ocr, max_seconds=a.max_seconds,
-                     event_detail=event_detail)
+                     event_detail=event_detail, labels=labels)
     elif a.cmd == "calibrate":
         import cv2
         from . import calibrate
@@ -116,6 +127,9 @@ def main():
         print(f"fed {len(picked)} archetypes -> {dest}")
         for p in picked:
             print(" ", p)
+    elif a.cmd == "label":
+        from . import labeltool
+        labeltool.generate(Path(a.out_dir))
     elif a.cmd == "event":
         import json
         from . import eventdata

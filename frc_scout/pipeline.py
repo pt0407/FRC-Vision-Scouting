@@ -12,7 +12,8 @@ from . import calibrate, detect, frames as frames_mod, ocr, report, track
 def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
         do_ocr: bool = True, verbose: bool = True,
         max_seconds: float | None = None,
-        event_detail: dict | None = None):
+        event_detail: dict | None = None,
+        labels: dict | None = None):
     out = work / "out"
     (out / "paths").mkdir(parents=True, exist_ok=True)
     (out / "archetypes").mkdir(parents=True, exist_ok=True)
@@ -166,6 +167,10 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
                 or (max(votes.items(), key=lambda kv: kv[1])[0]
                     if votes else None)
                 or f"track-{tid}")
+        if labels:
+            real = labels.get(f"{tk['alliance']}-{team}")
+            if real:
+                team = real
         key = f"{tk['alliance']}-{team}"
         st["team"] = team
         st["alliance"] = tk["alliance"]

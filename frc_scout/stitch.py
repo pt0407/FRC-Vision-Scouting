@@ -7,8 +7,9 @@ next in space and time.
 """
 import numpy as np
 
-MAX_GAP_S = 4.0        # max time gap between fragments
-MAX_DIST_M = 2.5       # max jump between fragment end and next start
+MAX_GAP_S = 6.0        # max time gap between fragments
+MAX_DIST_M = 3.0       # max jump between fragment end and next start
+MAX_LINK_SPEED = 8.0   # m/s — reject links implying teleportation
 
 
 def stitch(tracks_field: dict) -> dict:
@@ -49,6 +50,9 @@ def stitch(tracks_field: dict) -> dict:
                 if gap > MAX_GAP_S:
                     continue
                 d = np.linalg.norm(np.array(b["xy"][-1]) - a_start)
+                # reject links that imply inhuman speed
+                if d / max(gap, 0.5) > MAX_LINK_SPEED:
+                    continue
                 # allow bigger jumps for longer gaps
                 if d < bd + 0.5 * gap and d < MAX_DIST_M + gap:
                     bd, best = d, pj

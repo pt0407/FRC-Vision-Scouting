@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 
 # HSV ranges tuned for broadcast footage (OpenCV hue 0-179).
-RED_RANGES = [((0, 90, 70), (12, 255, 255)),
-              ((168, 90, 70), (179, 255, 255))]
+RED_RANGES = [((0, 75, 55), (12, 255, 255)),
+              ((168, 75, 55), (179, 255, 255))]
 BLUE_RANGE = ((95, 55, 55), (135, 255, 255))
 YELLOW_RANGE = ((18, 90, 120), (38, 255, 255))  # fuel balls
 
