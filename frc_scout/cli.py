@@ -73,9 +73,24 @@ def main():
             print(f"[scout] downloading {a.video}")
             video = download.download(a.video, work / "videos")
         event_detail = None
-        if a.event and a.match:
+        event, match = a.event, a.match
+        if (event is None or match is None) and not Path(a.video).exists():
+            # parse "Qualification N - ... - <Division> Division" titles
+            import re
+            import subprocess
+            title = subprocess.run(
+                ["yt-dlp", "--print", "%(title)s", "--no-download",
+                 a.video], capture_output=True, text=True).stdout.strip()
+            m = re.search(r"Qualification\s+(\d+)", title, re.I)
+            d = re.search(r"-\s*([A-Za-z]+)\s+Division", title)
+            if m and d:
+                match = match or int(m.group(1))
+                event = event or d.group(1).upper()
+                print(f"[scout] parsed title -> match {match}, "
+                      f"event {event}")
+        if event and match:
             from . import eventdata
-            event_detail = eventdata.match_detail(2026, a.event, a.match)
+            event_detail = eventdata.match_detail(2026, event, match)
         labels = None
         if a.labels:
             import json as _json
