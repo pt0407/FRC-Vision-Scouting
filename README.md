@@ -71,6 +71,30 @@ alliance fuel counts per shift, fouls and final score — ground truth
 that video inference can't match. `scouting.json` then contains both
 the official `event` block and the video-derived track stats.
 
+## Batch playlist scouting
+
+Process every qual match in an event playlist and aggregate
+per-team season profiles:
+
+```bash
+uv run frc-scout batch HOPPER \
+    "https://www.youtube.com/playlist?list=PLZT9pIgNOV6a8Ygkf-b-B50eHs0C-0BK7" \
+    --calibration calibrations/champs_hopper.json
+# resume later — matches with existing scouting.json are skipped:
+uv run frc-scout batch HOPPER <playlist> --calibration ... --skip 5
+# rebuild profiles from already-processed matches only:
+uv run frc-scout batch HOPPER <playlist> --calibration ... --aggregate-only
+```
+
+Per match: `data/batch/<season>_<event>/matches/NNN/out/` (same
+outputs as `run`), plus `data/batch/<season>_<event>/teams/<team>.json`
+with official event stats + any labeled video track stats rolled up.
+Playlist→match mapping is cached in `playlist_map.json`.
+
+Caveats: each division's broadcast may use a different camera angle —
+one calibration JSON per division/broadcast. ~55 MB per VOD; at
+`--fps 6` a match takes a few minutes locally.
+
 ## Labeling tracks with team numbers
 
 Bumper OCR doesn't work at broadcast resolution, so assign team

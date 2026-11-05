@@ -41,6 +41,21 @@ def main():
     f.add_argument("--top", type=int, default=6,
                    help="keep top-N tracks by drive time")
 
+    bt = sub.add_parser("batch",
+                        help="scout every qual match in an event")
+    bt.add_argument("event", help="event key, e.g. HOPPER")
+    bt.add_argument("playlist", help="YouTube playlist URL of match VODs")
+    bt.add_argument("--season", type=int, default=2026)
+    bt.add_argument("--calibration", required=True)
+    bt.add_argument("--limit", type=int, default=None,
+                    help="max matches to process")
+    bt.add_argument("--skip", type=int, default=0,
+                    help="skip first N matches")
+    bt.add_argument("--fps", type=float, default=6.0)
+    bt.add_argument("--max-seconds", type=float, default=None)
+    bt.add_argument("--aggregate-only", action="store_true",
+                    help="skip video, just rebuild team profiles")
+
     ev = sub.add_parser("event",
                         help="scrape FIRST event match data")
     ev.add_argument("event", help="event key, e.g. HOPPER")
@@ -148,6 +163,31 @@ def main():
         print(f"fed {len(picked)} archetypes -> {dest}")
         for p in picked:
             print(" ", p)
+    elif a.cmd == "batch":
+        import json as _json
+        from . import batch, eventdata
+        season, event = a.season, a.event
+        work = Path("data/batch") / f"{season}_{event}"
+        work.mkdir(parents=True, exist_ok=True)
+        # ensure event-level scrape exists
+        ev_json = work / f"{season}_{event}.json"
+        if not ev_json.exists():
+            data = eventdata.event_scouting(season, event)
+            ev_json.write_text(_json.dumps(data))
+        if not a.aggregate_only:
+            quals = _json.loads(ev_json.read_text())["quals"]
+            for q in quals[a.skip:][:a.limit]:
+                try:
+                    out_dir, skipped = batch.run_match(
+                        season, event, q["match"], a.playlist, work,
+                        Path(a.calibration), fps=a.fps,
+                        max_seconds=a.max_seconds)
+                    print(f"match {q['match']}: "
+                          f"{'skipped' if skipped else 'done'} -> {out_dir}")
+                except Exception as e:
+                    print(f"match {q['match']}: FAILED {e}")
+        teams = batch.aggregate(work, season, event)
+        print(f"aggregated {len(teams)} team profiles -> {work/'teams'}")
     elif a.cmd == "label":
         from . import labeltool
         labeltool.generate(Path(a.out_dir))
