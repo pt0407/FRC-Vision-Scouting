@@ -34,6 +34,12 @@ def main():
     f.add_argument("--top", type=int, default=6,
                    help="keep top-N tracks by drive time")
 
+    ac = sub.add_parser("autocal",
+                        help="auto-search field calibration")
+    ac.add_argument("video")
+    ac.add_argument("--out", required=True)
+    ac.add_argument("--max-seconds", type=float, default=90.0)
+
     pl = sub.add_parser("playlist",
                         help="list videos in a YouTube playlist")
     pl.add_argument("url")
@@ -92,6 +98,10 @@ def main():
         print(f"fed {len(picked)} archetypes -> {dest}")
         for p in picked:
             print(" ", p)
+    elif a.cmd == "autocal":
+        from . import autocal
+        autocal.run(Path(a.video), work, Path(a.out),
+                    max_seconds=a.max_seconds)
     elif a.cmd == "playlist":
         import subprocess
         subprocess.run(["yt-dlp", "--flat-playlist", "--print",
