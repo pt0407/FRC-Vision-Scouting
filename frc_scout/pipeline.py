@@ -129,6 +129,7 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
             tk["team_votes"] = dict(team_votes.get(tid, {}))
 
     summary = {}
+    winners = {}
     for tid, tk in tracks_field.items():
         # reject stationary blobs (field decor, scoreboard bits): need
         # real pixel-space movement to be a robot
@@ -157,8 +158,19 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
         st["track_id"] = tid
         st["team_votes"] = tk.get("team_votes", {})
         st["px_path"] = tk["px_path"]
-        summary[key] = st
-        # write outputs
+        # merge fragments that resolved to the same team: keep the
+        # longest-lived fragment's stats
+        prev = summary.get(key)
+        frags = (prev or {}).get("fragments", 0) + 1
+        st["fragments"] = frags
+        if prev is None or st["drive_time_s"] > prev["drive_time_s"]:
+            summary[key] = st
+            winners[key] = (tid, tk, st, speed, team)
+        else:
+            prev["fragments"] = frags
+
+    # write outputs for winning fragments
+    for key, (tid, tk, st, speed, team) in winners.items():
         (out / "paths" / f"{key}.json").write_text(json.dumps({
             "team": team, "alliance": tk["alliance"],
             "samples": [[round(t, 2), round(x, 2), round(z, 2)]
