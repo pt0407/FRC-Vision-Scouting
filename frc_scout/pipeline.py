@@ -133,22 +133,31 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
             tk["team"] = None
             tk["team_votes"] = dict(team_votes.get(tid, {}))
 
+    # pixel path lengths + apparent sizes per fragment
+    for tid, tk in tracks_field.items():
+        pts = traj[tid]
+        steps = [np.hypot(pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2])
+                 for i in range(len(pts)-1)]
+        tk["px_path"] = float(sum(steps))
+        tk["_px_step"] = float(np.median(steps)) if steps else 0.0
+        sz = sizes.get(tid, [])
+        tk["_size_m"] = float(np.median(sz)) if sz else None
+
+    # stitch fragments into robot-length trajectories
+    from . import stitch
+    work_tracks = stitch.stitch(tracks_field)
+    if verbose:
+        print(f"[scout] stitched {len(tracks_field)} fragments -> "
+              f"{len(work_tracks)} trajectories")
+
     summary = {}
     winners = {}
-    for tid, tk in tracks_field.items():
-        # reject stationary blobs (field decor, scoreboard bits): need
-        # real pixel-space movement to be a robot
-        pts = traj[tid]
-        px_path = sum(np.hypot(pts[i+1][1]-pts[i][1],
-                               pts[i+1][2]-pts[i][2])
-                      for i in range(len(pts)-1))
-        tk["px_path"] = float(px_path)
-        if tk["hits"] < 30 or px_path < 150.0:   # <3 s or barely moved
+    for tid, tk in work_tracks.items():
+        if tk["hits"] < 30 or tk["px_path"] < 150.0 \
+                or tk.get("_px_step", 0) < 2.0:
             continue
         st, xy, speed = report.summarize(tk, fps)
-        # apparent size + accel for archetype
-        sz = sizes.get(tid, [0.8])
-        st["_size_m"] = float(np.median(sz)) if sz else 0.8
+        st["_size_m"] = tk.get("_size_m") or 0.8
         dt = np.diff(tk["t"]); dt[dt <= 0] = 1 / fps
         acc = np.abs(np.diff(speed)) / dt[1:] if len(speed) > 2 else [0]
         st["_accel95"] = float(np.percentile(acc, 95)) if len(acc) else 2.0
@@ -190,14 +199,14 @@ def run(video: Path, work: Path, calib_path: Path, fps: float = 10.0,
         "video": str(video), "fps": fps,
         "teams": summary,
         "unidentified_tracks": [
-            {"tid": tid, "alliance": tracks_field[tid]["alliance"],
-             "hits": tracks_field[tid]["hits"],
-             "px_path": round(tracks_field[tid]["px_path"], 1),
-             "votes": tracks_field[tid].get("team_votes", {})}
-            for tid in tracks_field
-            if tracks_field[tid]["hits"] >= 30
-            and tracks_field[tid].get("px_path", 0) >= 150.0
-            and tracks_field[tid]["team"] is None
+            {"tid": tid, "alliance": work_tracks[tid]["alliance"],
+             "hits": work_tracks[tid]["hits"],
+             "px_path": round(work_tracks[tid]["px_path"], 1),
+             "votes": work_tracks[tid].get("team_votes", {})}
+            for tid in work_tracks
+            if work_tracks[tid]["hits"] >= 30
+            and work_tracks[tid].get("px_path", 0) >= 150.0
+            and work_tracks[tid]["team"] is None
         ],
     }
     if event_detail:
