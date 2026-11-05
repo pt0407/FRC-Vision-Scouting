@@ -113,8 +113,14 @@ def main():
         import json
         import shutil
         scouting = json.loads(Path(a.scouting).read_text())
-        teams = sorted(scouting["teams"].items(),
-                       key=lambda kv: -kv[1]["drive_time_s"])[:a.top]
+        # top-N per alliance (default 3 = a real match lineup)
+        per_alliance = max(1, a.top // 2)
+        teams = []
+        for alliance in ("red", "blue"):
+            group = [(k, v) for k, v in scouting["teams"].items()
+                     if k.startswith(alliance + "-")]
+            group.sort(key=lambda kv: -kv[1]["drive_time_s"])
+            teams.extend(group[:per_alliance])
         dest = Path(a.sim) / "archetypes" / "scouted"
         dest.mkdir(parents=True, exist_ok=True)
         src_dir = Path(a.scouting).parent / "archetypes"
