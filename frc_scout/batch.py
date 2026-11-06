@@ -77,8 +77,14 @@ def video_url(vid: str) -> str:
 
 
 def run_match(season, event, match, playlist_url, work, calib_path,
-              fps=6.0, width=None, do_ocr=False, max_seconds=None):
-    """Scout one match end-to-end. Returns out dir."""
+              fps=6.0, width=None, do_ocr=False, max_seconds=None,
+              keep_frames=False, keep_video=False):
+    """Scout one match end-to-end. Returns out dir.
+
+    Deletes intermediate frames (~260MB/match) and the VOD (~55MB)
+    after a successful run — everything needed downstream is in
+    out/. Pass keep_frames/keep_video to retain them.
+    """
     vmap = playlist_map(playlist_url, work / "playlist_map.json")
     vid = vmap.get(match)
     if not vid:
@@ -89,9 +95,15 @@ def run_match(season, event, match, playlist_url, work, calib_path,
         return out_dir, True
     video = download.download(url, work / "videos")
     detail = eventdata.match_detail(season, event, match)
-    pipeline.run(video, work / "matches" / f"{match:03d}",
+    match_dir = work / "matches" / f"{match:03d}"
+    pipeline.run(video, match_dir,
                  calib_path, fps=fps, do_ocr=do_ocr,
                  max_seconds=max_seconds, event_detail=detail)
+    if not keep_frames:
+        import shutil
+        shutil.rmtree(match_dir / "frames", ignore_errors=True)
+    if not keep_video:
+        video.unlink(missing_ok=True)
     return out_dir, False
 
 

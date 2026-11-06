@@ -58,6 +58,8 @@ def main():
     bt.add_argument("--reclassify", action="store_true",
                     help="backfill behavior features into processed "
                          "matches, then exit")
+    bt.add_argument("--keep-frames", action="store_true")
+    bt.add_argument("--keep-video", action="store_true")
 
     ev = sub.add_parser("event",
                         help="scrape FIRST event match data")
@@ -210,7 +212,9 @@ def main():
                     out_dir, skipped = batch.run_match(
                         season, event, q["match"], a.playlist, work,
                         Path(a.calibration), fps=a.fps,
-                        max_seconds=a.max_seconds)
+                        max_seconds=a.max_seconds,
+                        keep_frames=a.keep_frames,
+                        keep_video=a.keep_video)
                     print(f"match {q['match']}: "
                           f"{'skipped' if skipped else 'done'} -> {out_dir}")
                 except Exception as e:
